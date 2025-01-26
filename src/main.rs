@@ -192,7 +192,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut tasks = Vec::new();
     let cid_list: Vec<_> = cid2name_dict.keys().map(|s| s.to_string()).collect();
     for cid in cid_list {
-        if config.cid_include_list.is_empty() || !config.cid_include_list.contains(&cid) {
+        if !config.cid_include_list.is_empty() && !config.cid_include_list.contains(&cid) {
             continue;
         }
         let course_name = match cid2name_dict.get(&cid) {

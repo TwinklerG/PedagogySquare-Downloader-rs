@@ -45,3 +45,5 @@
 **然后便可启动下载器**
 
 windows下双击即可运行，linux/macos建议采用命令行
+
+下载结果在当前目录的downloads目录内
