@@ -12,6 +12,7 @@
   <img alt="GitHub closed issues" src="https://img.shields.io/github/issues-closed-raw/TwinklerG/PedagogySquare-Downloader-rs">
   <img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-brightgreen">
 </p>
+
 在线教学平台—— [教学立方](https://teaching.applysquare.com) 的课件批量并行下载脚本，基于**Rust** + **Reqwest** + **Tokio**
 
 本项目重写自EricZhu学长的项目[PedagogySquare_Downloader](https://github.com/EricZhu-42/PedagogySquare_Downloader)
