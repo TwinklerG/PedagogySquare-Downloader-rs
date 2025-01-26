@@ -1,4 +1,4 @@
-# 教学立方课件下载器——Rust Tokio版
+<h1 align="center">教学立方课件下载器——Rust Tokio版</h1>
 
 <p align="center">
   <img alt="GitHub" src="https://img.shields.io/github/license/TwinklerG/PedagogySquare-Downloader-rs">
@@ -12,7 +12,7 @@
   <img alt="GitHub closed issues" src="https://img.shields.io/github/issues-closed-raw/TwinklerG/PedagogySquare-Downloader-rs">
   <img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-brightgreen">
 </p>
-在线教学平台——[教学立方](https://teaching.applysquare.com)的课件批量并行下载脚本，基于**Rust** + **Reqwest** + **Tokio**
+在线教学平台—— [教学立方](https://teaching.applysquare.com) 的课件批量并行下载脚本，基于**Rust** + **Reqwest** + **Tokio**
 
 本项目重写自EricZhu学长的项目[PedagogySquare_Downloader](https://github.com/EricZhu-42/PedagogySquare_Downloader)
 
@@ -20,7 +20,7 @@
 
 ## 使用说明
 
-在本项目中的Release部分下载对应平台的压缩包，解压缩后可以看到有两个文件
+在本项目中的**Release**部分下载对应平台的压缩包，解压缩后可以看到有两个文件
 
 - 可执行文件
 - `config.json`配置文件
