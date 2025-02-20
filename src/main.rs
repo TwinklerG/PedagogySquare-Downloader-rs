@@ -5,6 +5,8 @@ use std::fs;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
+use std::str::FromStr;
+use tqdm::pbar;
 
 // Get Hex md5 encoded password
 fn hex_md5_stringify(raw_str: &str) -> Result<String, Box<dyn std::error::Error>> {
@@ -302,10 +304,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     entry.info.path = resp.message.path;
                 }
 
-                let resp = client2.get(entry.info.path).send().await.unwrap();
+                let mut resp = client2.get(entry.info.path).send().await.unwrap();
                 let content_size = resp.headers()["Content-Length"].to_owned();
-
-                let resp = resp.bytes().await.unwrap();
 
                 if file_path.exists() && file_path.is_file() {
                     // If file is up to date, continue; else, delete and re-download
@@ -319,7 +319,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 println!("Downloading {}, filesize = {}", filename, filesize);
                 let mut f = File::create(&file_path).unwrap();
-                f.write_all(&resp).unwrap();
+                println!("{:?} {}", content_size, content_size.len());
+                let mut progress_bar = pbar(Some(usize::from_str(content_size.to_str().unwrap()).unwrap()));
+                while let Some(chunk) = resp.chunk().await.unwrap() {
+                    progress_bar.update(chunk.len()).expect("wrong to update progress bar");
+                    f.write_all(&chunk).unwrap();
+                }
                 println!("Finish download {}", filename);
             }));
         }
