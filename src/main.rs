@@ -1,3 +1,4 @@
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use reqwest::Client;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -6,7 +7,6 @@ use std::fs::File;
 use std::io::Write;
 use std::path::Path;
 use std::str::FromStr;
-use tqdm::pbar;
 
 // Get Hex md5 encoded password
 fn hex_md5_stringify(raw_str: &str) -> Result<String, Box<dyn std::error::Error>> {
@@ -191,9 +191,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    let mut tasks = Vec::new();
     let cid_list: Vec<_> = cid2name_dict.keys().map(|s| s.to_string()).collect();
     for cid in cid_list {
+        let mut tasks = Vec::new();
         if !config.cid_include_list.is_empty() && !config.cid_include_list.contains(&cid) {
             continue;
         }
@@ -259,6 +259,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             dir_counter
         );
 
+        let multi_progresses = MultiProgress::new();
+
         // Download attachments
         for mut entry in course_attachment_list {
             let ext = entry.info.ext.clone();
@@ -273,65 +275,81 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
             let file_path = root_path.join(&entry.parent_dir).join(&filename);
             let filesize = entry.info.size.clone();
-            let entry2 = entry.clone();
-            let cid2 = cid.clone();
-            let token2 = token.clone();
-            let uid2 = uid.clone();
-            tasks.push(tokio::task::spawn(async move {
-                // Get download url for un-downloadable files
-                if entry2.info.can_download == "0" {
-                    let attachment_detail_url = format!(
-                        attachment_detail_url_fmt!(),
-                        &token2, &entry.info.id, &uid2, &cid2
-                    );
-                    #[derive(Deserialize)]
-                    struct AttachDetail {
-                        message: DetailMessage,
-                    }
-                    #[derive(Deserialize)]
-                    struct DetailMessage {
-                        path: String,
-                    }
-                    let resp = client2
-                        .get(attachment_detail_url)
-                        .send()
-                        .await
+            let multi_progresses = multi_progresses.clone();
+            let mut flag = true;
+            // Get download url for un-downloadable files
+            if entry.info.can_download == "0" {
+                let attachment_detail_url = format!(
+                    attachment_detail_url_fmt!(),
+                    &token, &entry.info.id, &uid, &cid
+                );
+                #[derive(Deserialize)]
+                struct AttachDetail {
+                    message: DetailMessage,
+                }
+                #[derive(Deserialize)]
+                struct DetailMessage {
+                    path: String,
+                }
+                let resp = client2
+                    .get(attachment_detail_url)
+                    .send()
+                    .await
+                    .unwrap()
+                    .json::<AttachDetail>()
+                    .await
+                    .unwrap();
+
+                entry.info.path = resp.message.path;
+            }
+
+            let mut resp = client2.get(entry.info.path).send().await.unwrap();
+            let content_size = resp.headers()["Content-Length"].to_owned();
+
+            if file_path.exists() && file_path.is_file() {
+                // If file is up to date, continue; else, delete and re-download
+                if fs::read(&file_path).unwrap().len().to_string() == content_size {
+                    println!("File {} is up-to-date", filename);
+                    flag = false;
+                } else {
+                    // println!("Updating File {}", filename);
+                    fs::remove_file(&file_path).unwrap();
+                }
+            }
+            if flag {
+                tasks.push(tokio::task::spawn(async move {
+                    // println!("Downloading {}, filesize = {}", filename, filesize);
+                    let mut f = File::create(&file_path).unwrap();
+                    // println!("{:?} {}", content_size, content_size.len());
+                    let progress_bar = multi_progresses.add(ProgressBar::new(
+                        u64::from_str(content_size.to_str().unwrap()).unwrap(),
+                    ));
+                    progress_bar.set_style(
+                        ProgressStyle::with_template(
+                            "[{elapsed_precise}] {bar:20.cyan/blue} {pos:>7}/{len:7} {msg}",
+                        )
                         .unwrap()
-                        .json::<AttachDetail>()
-                        .await
-                        .unwrap();
-
-                    entry.info.path = resp.message.path;
-                }
-
-                let mut resp = client2.get(entry.info.path).send().await.unwrap();
-                let content_size = resp.headers()["Content-Length"].to_owned();
-
-                if file_path.exists() && file_path.is_file() {
-                    // If file is up to date, continue; else, delete and re-download
-                    if fs::read(&file_path).unwrap().len().to_string() == content_size {
-                        println!("File {} is up-to-date", filename);
-                        return;
-                    } else {
-                        println!("Updating File {}", filename);
-                        fs::remove_file(&file_path).unwrap();
+                        .progress_chars("##-"),
+                    );
+                    progress_bar
+                        .set_message(format!("Downloading {}, filesize = {}", filename, filesize));
+                    while let Some(chunk) = resp.chunk().await.unwrap() {
+                        progress_bar.inc(chunk.len() as u64);
+                        f.write_all(&chunk).unwrap();
                     }
+                    progress_bar.finish();
+                    // multi_progresses.remove(&progress_bar);
+                    // println!("Finish download {}", filename);
+                }));
+                while tasks.len() > 5 {
+                    let task = tasks.remove(0);
+                    task.await?;
                 }
-                println!("Downloading {}, filesize = {}", filename, filesize);
-                let mut f = File::create(&file_path).unwrap();
-                println!("{:?} {}", content_size, content_size.len());
-                let mut progress_bar = pbar(Some(usize::from_str(content_size.to_str().unwrap()).unwrap()));
-                while let Some(chunk) = resp.chunk().await.unwrap() {
-                    progress_bar.update(chunk.len()).expect("wrong to update progress bar");
-                    f.write_all(&chunk).unwrap();
-                }
-                println!("Finish download {}", filename);
-            }));
+            }
         }
-    }
-
-    for task in tasks {
-        task.await?;
+        for task in tasks {
+            task.await?;
+        }
     }
 
     Ok(())
