@@ -7,6 +7,8 @@ use std::fs::File;
 use std::io::Write;
 use std::path::Path;
 use std::str::FromStr;
+use std::sync::Arc;
+use tokio::sync::Semaphore;
 
 // Get Hex md5 encoded password
 fn hex_md5_stringify(raw_str: &str) -> Result<String, Box<dyn std::error::Error>> {
@@ -193,7 +195,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let cid_list: Vec<_> = cid2name_dict.keys().map(|s| s.to_string()).collect();
     for cid in cid_list {
-        let mut tasks = Vec::new();
         if !config.cid_include_list.is_empty() && !config.cid_include_list.contains(&cid) {
             continue;
         }
@@ -261,6 +262,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let multi_progresses = MultiProgress::new();
 
+        // Semaphore
+        let semaphore = Arc::new(Semaphore::new(5));
+        let mut join_handles = Vec::new();
         // Download attachments
         for mut entry in course_attachment_list {
             let ext = entry.info.ext.clone();
@@ -317,7 +321,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
             if flag {
-                tasks.push(tokio::task::spawn(async move {
+                let permit = semaphore.clone().acquire_owned().await.unwrap();
+                join_handles.push(tokio::task::spawn(async move {
                     // println!("Downloading {}, filesize = {}", filename, filesize);
                     let mut f = File::create(&file_path).unwrap();
                     // println!("{:?} {}", content_size, content_size.len());
@@ -340,14 +345,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     progress_bar.finish();
                     // multi_progresses.remove(&progress_bar);
                     // println!("Finish download {}", filename);
+                    drop(permit);
                 }));
-                while tasks.len() > 5 {
-                    let task = tasks.remove(0);
-                    task.await?;
-                }
             }
         }
-        for task in tasks {
+        for task in join_handles {
             task.await?;
         }
     }
